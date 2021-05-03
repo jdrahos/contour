@@ -35,3 +35,7 @@ func addresses(ips ...string) []v1.EndpointAddress {
 	}
 	return addrs
 }
+
+func address(ip, nodeName string) v1.EndpointAddress {
+	return v1.EndpointAddress{IP: ip, NodeName: &nodeName}
+}

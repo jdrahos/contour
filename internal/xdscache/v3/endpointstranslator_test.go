@@ -52,7 +52,7 @@ func TestEndpointsTranslatorContents(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			et := NewEndpointsTranslator(fixture.NewTestLogger(t))
+			et := NewEndpointsTranslator(fixture.NewTestLogger(t), zeroWeight)
 			et.entries = tc.contents
 			got := et.Contents()
 			protobuf.ExpectEqual(t, tc.want, got)
@@ -108,7 +108,7 @@ func TestEndpointCacheQuery(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			et := NewEndpointsTranslator(fixture.NewTestLogger(t))
+			et := NewEndpointsTranslator(fixture.NewTestLogger(t), zeroWeight)
 			et.entries = tc.contents
 			got := et.Query(tc.query)
 			protobuf.ExpectEqual(t, tc.want, got)
@@ -292,7 +292,7 @@ func TestEndpointsTranslatorAddEndpoints(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			et := NewEndpointsTranslator(fixture.NewTestLogger(t))
+			et := NewEndpointsTranslator(fixture.NewTestLogger(t), zeroWeight)
 			require.NoError(t, et.cache.SetClusters(clusters))
 			et.OnAdd(tc.ep)
 			got := et.Contents()
@@ -444,7 +444,7 @@ func TestEndpointsTranslatorRemoveEndpoints(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			et := NewEndpointsTranslator(fixture.NewTestLogger(t))
+			et := NewEndpointsTranslator(fixture.NewTestLogger(t), zeroWeight)
 			require.NoError(t, et.cache.SetClusters(clusters))
 			tc.setup(et)
 			// TODO(jpeach): this doesn't actually test
@@ -548,7 +548,7 @@ func TestEndpointsTranslatorRecomputeClusterLoadAssignment(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			et := NewEndpointsTranslator(fixture.NewTestLogger(t))
+			et := NewEndpointsTranslator(fixture.NewTestLogger(t), zeroWeight)
 			require.NoError(t, et.cache.SetClusters([]*dag.ServiceCluster{&tc.cluster}))
 			et.OnAdd(tc.ep)
 			got := et.Contents()
@@ -559,7 +559,7 @@ func TestEndpointsTranslatorRecomputeClusterLoadAssignment(t *testing.T) {
 
 // See #602
 func TestEndpointsTranslatorScaleToZeroEndpoints(t *testing.T) {
-	et := NewEndpointsTranslator(fixture.NewTestLogger(t))
+	et := NewEndpointsTranslator(fixture.NewTestLogger(t), zeroWeight)
 
 	require.NoError(t, et.cache.SetClusters([]*dag.ServiceCluster{
 		{
@@ -605,7 +605,7 @@ func TestEndpointsTranslatorScaleToZeroEndpoints(t *testing.T) {
 
 // Test that a cluster with weighted services propagates the weights.
 func TestEndpointsTranslatorWeightedService(t *testing.T) {
-	et := NewEndpointsTranslator(fixture.NewTestLogger(t))
+	et := NewEndpointsTranslator(fixture.NewTestLogger(t), zeroWeight)
 	clusters := []*dag.ServiceCluster{
 		{
 			ClusterName: "default/weighted",
@@ -666,7 +666,7 @@ func TestEndpointsTranslatorWeightedService(t *testing.T) {
 // weights unspecified defaults to equally weighed and propagates the
 // weights.
 func TestEndpointsTranslatorDefaultWeightedService(t *testing.T) {
-	et := NewEndpointsTranslator(fixture.NewTestLogger(t))
+	et := NewEndpointsTranslator(fixture.NewTestLogger(t), zeroWeight)
 	clusters := []*dag.ServiceCluster{
 		{
 			ClusterName: "default/weighted",
@@ -812,6 +812,60 @@ func TestEqual(t *testing.T) {
 	}
 }
 
+// Test that a cluster with weighted services propagates the weights.
+func TestEndpointsTranslatorWeightedEndpoints(t *testing.T) {
+	et := NewEndpointsTranslator(fixture.NewTestLogger(t), nodeWeight)
+	clusters := []*dag.ServiceCluster{
+		{
+			ClusterName: "default/weighted",
+			Services: []dag.WeightedService{
+				{
+					Weight:           0,
+					ServiceName:      "epweight",
+					ServiceNamespace: "default",
+					ServicePort:      v1.ServicePort{},
+				},
+			},
+		},
+	}
+
+	require.NoError(t, et.cache.SetClusters(clusters))
+
+	epSubset := v1.EndpointSubset{
+		Addresses: []v1.EndpointAddress{
+			address("192.168.183.1", "node1"),
+			address("192.168.183.2", "node2"),
+			address("192.168.183.3", "node3"),
+			address("192.168.183.128", "node128"),
+		},
+		Ports: ports(port("", 8080)),
+	}
+
+	et.OnAdd(endpoints("default", "epweight", epSubset))
+
+	// Each helper builds a `LocalityLbEndpoints` with one
+	// entry, so we can compose the final result by reaching
+	// in an taking the first element of each slice.
+	we1 := envoy_v3.WeightedLBEndpoint(1, envoy_v3.SocketAddress("192.168.183.1", 8080))
+	we2 := envoy_v3.WeightedLBEndpoint(2, envoy_v3.SocketAddress("192.168.183.2", 8080))
+	we3 := envoy_v3.WeightedLBEndpoint(3, envoy_v3.SocketAddress("192.168.183.3", 8080))
+	we128 := envoy_v3.WeightedLBEndpoint(10, envoy_v3.SocketAddress("192.168.183.128", 8080))
+
+	want := []proto.Message{
+		&envoy_endpoint_v3.ClusterLoadAssignment{
+			ClusterName: "default/weighted",
+			Endpoints: []*envoy_endpoint_v3.LocalityLbEndpoints{
+				{
+					LbEndpoints:         []*envoy_endpoint_v3.LbEndpoint{we1, we128, we2, we3},
+					LoadBalancingWeight: protobuf.UInt32(1),
+				},
+			},
+		},
+	}
+
+	protobuf.ExpectEqual(t, want, et.Contents())
+}
+
 func ports(eps ...v1.EndpointPort) []v1.EndpointPort {
 	return eps
 }
@@ -830,4 +884,21 @@ func clusterloadassignments(clas ...*envoy_endpoint_v3.ClusterLoadAssignment) ma
 		m[cla.ClusterName] = cla
 	}
 	return m
+}
+
+func zeroWeight(_ string) uint32 {
+	return 0
+}
+
+func nodeWeight(nodeName string) uint32 {
+	switch nodeName {
+	case "node1":
+		return 1
+	case "node2":
+		return 2
+	case "node3":
+		return 3
+	default:
+		return 10
+	}
 }

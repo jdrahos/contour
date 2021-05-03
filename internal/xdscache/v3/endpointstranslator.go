@@ -19,7 +19,7 @@ import (
 	"sync"
 
 	envoy_endpoint_v3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
-	resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
+	resource_v3 "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/golang/protobuf/proto"
 	"github.com/projectcontour/contour/internal/contour"
 	"github.com/projectcontour/contour/internal/dag"
@@ -39,7 +39,7 @@ type LoadBalancingEndpoint = envoy_endpoint_v3.LbEndpoint
 // RecalculateEndpoints generates a slice of LoadBalancingEndpoint
 // resources by matching the given service port to the given v1.Endpoints.
 // ep may be nil, in which case, the result is also nil.
-func RecalculateEndpoints(port v1.ServicePort, ep *v1.Endpoints) []*LoadBalancingEndpoint {
+func RecalculateEndpoints(port v1.ServicePort, ep *v1.Endpoints, getNodeWeight NodeWeightFunc) []*LoadBalancingEndpoint {
 	if ep == nil {
 		return nil
 	}
@@ -71,7 +71,16 @@ func RecalculateEndpoints(port v1.ServicePort, ep *v1.Endpoints) []*LoadBalancin
 
 			for _, a := range addresses {
 				addr := envoy_v3.SocketAddress(a.IP, int(p.Port))
-				lb = append(lb, envoy_v3.LBEndpoint(addr))
+				if a.NodeName != nil {
+					nodeWeight := getNodeWeight(*a.NodeName)
+					if nodeWeight != 0 {
+						lb = append(lb, envoy_v3.WeightedLBEndpoint(nodeWeight, addr))
+					} else {
+						lb = append(lb, envoy_v3.LBEndpoint(addr))
+					}
+				} else {
+					lb = append(lb, envoy_v3.LBEndpoint(addr))
+				}
 			}
 		}
 	}
@@ -95,6 +104,9 @@ type EndpointsCache struct {
 
 	// Cache of endpoints, indexed by name.
 	endpoints map[types.NamespacedName]*v1.Endpoints
+
+	//function to use to get weight of node by node name
+	nodeWeightFunc NodeWeightFunc
 }
 
 // Recalculate regenerates all the ClusterLoadAssignments from the
@@ -124,7 +136,7 @@ func (c *EndpointsCache) Recalculate() map[string]*envoy_endpoint_v3.ClusterLoad
 		// attach them as a new LocalityEndpoints resource2.
 		for _, w := range cluster.Services {
 			n := types.NamespacedName{Namespace: w.ServiceNamespace, Name: w.ServiceName}
-			if lb := RecalculateEndpoints(w.ServicePort, c.endpoints[n]); lb != nil {
+			if lb := RecalculateEndpoints(w.ServicePort, c.endpoints[n], c.nodeWeightFunc); lb != nil {
 				// Append the new set of endpoints. Users are allowed to set the load
 				// balancing weight to 0, which we reflect to Envoy as nil in order to
 				// assign no load to that locality.
@@ -220,15 +232,16 @@ func (c *EndpointsCache) DeleteEndpoint(ep *v1.Endpoints) {
 }
 
 // NewEndpointsTranslator allocates a new endpoints translator.
-func NewEndpointsTranslator(log logrus.FieldLogger) *EndpointsTranslator {
+func NewEndpointsTranslator(log logrus.FieldLogger, nodeWeightFunc NodeWeightFunc) *EndpointsTranslator {
 	return &EndpointsTranslator{
 		Cond:        contour.Cond{},
 		FieldLogger: log,
 		entries:     map[string]*envoy_endpoint_v3.ClusterLoadAssignment{},
 		cache: EndpointsCache{
-			stale:     nil,
-			services:  map[types.NamespacedName][]*dag.ServiceCluster{},
-			endpoints: map[types.NamespacedName]*v1.Endpoints{},
+			stale:          nil,
+			services:       map[types.NamespacedName][]*dag.ServiceCluster{},
+			endpoints:      map[types.NamespacedName]*v1.Endpoints{},
+			nodeWeightFunc: nodeWeightFunc,
 		},
 	}
 }
@@ -432,4 +445,4 @@ func (e *EndpointsTranslator) Query(names []string) []proto.Message {
 	return protobuf.AsMessages(values)
 }
 
-func (*EndpointsTranslator) TypeURL() string { return resource.EndpointType }
+func (*EndpointsTranslator) TypeURL() string { return resource_v3.EndpointType }

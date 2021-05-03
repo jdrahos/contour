@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"sync"
 
+	"k8s.io/client-go/tools/cache"
+
 	contour_api_v1 "github.com/projectcontour/contour/apis/projectcontour/v1"
 	contour_api_v1alpha1 "github.com/projectcontour/contour/apis/projectcontour/v1alpha1"
 	"github.com/projectcontour/contour/internal/annotation"
@@ -30,7 +32,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/utils/pointer"
 	gatewayapi_v1alpha1 "sigs.k8s.io/gateway-api/apis/v1alpha1"
 )
@@ -65,6 +66,7 @@ type KubernetesCache struct {
 	tlsroutes                 map[types.NamespacedName]*gatewayapi_v1alpha1.TLSRoute
 	backendpolicies           map[types.NamespacedName]*gatewayapi_v1alpha1.BackendPolicy
 	extensions                map[types.NamespacedName]*contour_api_v1alpha1.ExtensionService
+	nodes                     map[string]*v1.Node
 
 	initialize sync.Once
 
@@ -83,6 +85,7 @@ func (kc *KubernetesCache) init() {
 	kc.tlsroutes = make(map[types.NamespacedName]*gatewayapi_v1alpha1.TLSRoute)
 	kc.backendpolicies = make(map[types.NamespacedName]*gatewayapi_v1alpha1.BackendPolicy)
 	kc.extensions = make(map[types.NamespacedName]*contour_api_v1alpha1.ExtensionService)
+	kc.nodes = make(map[string]*v1.Node)
 }
 
 // matchesIngressClass returns true if the given IngressClass
@@ -257,7 +260,9 @@ func (kc *KubernetesCache) Insert(obj interface{}) bool {
 	case *contour_api_v1alpha1.ExtensionService:
 		kc.extensions[k8s.NamespacedNameOf(obj)] = obj
 		return true
-
+	case *v1.Node:
+		kc.nodes[obj.Name] = obj
+		return true
 	default:
 		// not an interesting object
 		kc.WithField("object", obj).Error("insert unknown object")
@@ -453,7 +458,10 @@ func (kc *KubernetesCache) remove(obj interface{}) bool {
 		_, ok := kc.extensions[m]
 		delete(kc.extensions, m)
 		return ok
-
+	case *v1.Node:
+		_, ok := kc.nodes[obj.Name]
+		delete(kc.nodes, obj.Name)
+		return ok
 	default:
 		// not interesting
 		kc.WithField("object", obj).Error("remove unknown object")

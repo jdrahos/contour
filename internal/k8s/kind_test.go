@@ -45,6 +45,7 @@ func TestKindOf(t *testing.T) {
 				"kind":       "Foo",
 			}},
 		},
+		{"Node", &v1.Node{}},
 	}
 
 	for _, c := range cases {
@@ -70,6 +71,7 @@ func TestVersionOf(t *testing.T) {
 				"kind":       "Foo",
 			}},
 		},
+		{"v1", &v1.Node{}},
 	}
 
 	for _, c := range cases {

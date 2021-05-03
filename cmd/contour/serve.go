@@ -150,6 +150,11 @@ func registerServe(app *kingpin.Application) (*kingpin.CmdClause, *serveContext)
 	serve.Flag("debug", "Enable debug logging.").Short('d').BoolVar(&ctx.Config.Debug)
 	serve.Flag("kubernetes-debug", "Enable Kubernetes client debug logging with log level.").PlaceHolder("<log level>").UintVar(&ctx.KubernetesDebug)
 	serve.Flag("experimental-service-apis", "DEPRECATED: Please configure the gateway.name & gateway.namespace in the configuration file.").BoolVar(&ctx.UseExperimentalServiceAPITypes)
+
+	serve.Flag("node-weight", "Enable node weight annotations to be used for setting weight of endpoints. Default 'false'.").PlaceHolder("<true/false>").BoolVar(&ctx.EnableNodeWeights)
+	serve.Flag("node-weight-annotation", "Name of the weigh annotation on a node object. Default 'ingress.kubernetes.io/node-weight'.").PlaceHolder("<annotation>").StringVar(&ctx.NodeWeightAnnotation)
+	serve.Flag("node-weight-default", "Default weight for node if the node-weight-annotation is not present on node object. Default '1'.").PlaceHolder("<weight>").Uint32Var(&ctx.DefaultNodeWeight)
+
 	return serve, ctx
 }
 
@@ -370,9 +375,12 @@ func doServe(log logrus.FieldLogger, ctx *serveContext) error {
 
 	contourMetrics := metrics.NewMetrics(registry)
 
+	// Handler watching node events to build and keep up to date node weight cache
+	nodeHandler := xdscache_v3.NewNodeWeightCache(log.WithField("context", "nodeHandler"), ctx.NodeWeightAnnotation, ctx.DefaultNodeWeight)
+
 	// Endpoints updates are handled directly by the EndpointsTranslator
 	// due to their high update rate and their orthogonal nature.
-	endpointHandler := xdscache_v3.NewEndpointsTranslator(log.WithField("context", "endpointstranslator"))
+	endpointHandler := xdscache_v3.NewEndpointsTranslator(log.WithField("context", "endpointstranslator"), nodeHandler.GetWeightOfNode)
 
 	resources := []xdscache.ResourceCache{
 		xdscache_v3.NewListenerCache(listenerConfig, ctx.statsAddr, ctx.statsPort),
@@ -455,11 +463,12 @@ func doServe(log logrus.FieldLogger, ctx *serveContext) error {
 
 	// Wrap eventHandler in a converter for objects from the dynamic client.
 	// and an EventRecorder which tracks API server events.
+	eventHandlerRecorder := &contour.EventRecorder{
+		Next:    eventHandler,
+		Counter: contourMetrics.EventHandlerOperations,
+	}
 	dynamicHandler := k8s.DynamicClientHandler{
-		Next: &contour.EventRecorder{
-			Next:    eventHandler,
-			Counter: contourMetrics.EventHandlerOperations,
-		},
+		Next:      eventHandlerRecorder,
 		Converter: converter,
 		Logger:    log.WithField("context", "dynamicHandler"),
 	}
@@ -535,6 +544,21 @@ func doServe(log logrus.FieldLogger, ctx *serveContext) error {
 			Logger:    log.WithField("context", "endpointstranslator"),
 		}); err != nil {
 			log.WithError(err).WithField("resource", r).Fatal("failed to create informer")
+		}
+	}
+
+	// If node weights for endpoints are enabled, start watching nodes before we push the update to regular event handler
+	if ctx.EnableNodeWeights {
+		// chain before event recorder which is called before regular event handler
+		nodeHandler.Next = eventHandlerRecorder
+		for _, r := range k8s.NodesResources() {
+			if err := informOnResource(clients, r, &k8s.DynamicClientHandler{
+				Next:      nodeHandler,
+				Converter: converter,
+				Logger:    log.WithField("context", "endpointstranslator"),
+			}); err != nil {
+				log.WithError(err).WithField("resource", r).Fatal("failed to create informer")
+			}
 		}
 	}
 

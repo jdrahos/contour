@@ -72,7 +72,7 @@ func setup(t *testing.T, opts ...interface{}) (cache.ResourceEventHandler, *Cont
 	log := fixture.NewTestLogger(t)
 	log.SetLevel(logrus.DebugLevel)
 
-	et := xdscache_v3.NewEndpointsTranslator(log)
+	et := xdscache_v3.NewEndpointsTranslator(log, func(s string) uint32 { return 0 })
 
 	conf := xdscache_v3.ListenerConfig{}
 	for _, opt := range opts {

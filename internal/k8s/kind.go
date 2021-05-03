@@ -54,6 +54,8 @@ func KindOf(obj interface{}) string {
 			return "ExtensionService"
 		case *unstructured.Unstructured:
 			return obj.GetKind()
+		case *v1.Node:
+			return "Node"
 		default:
 			return ""
 		}
@@ -71,7 +73,7 @@ func VersionOf(obj interface{}) string {
 	gvk, _, err := scheme.Scheme.ObjectKinds(obj.(runtime.Object))
 	if err != nil {
 		switch obj := obj.(type) {
-		case *v1.Secret, *v1.Service, *v1.Endpoints:
+		case *v1.Secret, *v1.Service, *v1.Endpoints, *v1.Node:
 			return v1.SchemeGroupVersion.String()
 		case *v1beta1.Ingress:
 			return v1beta1.SchemeGroupVersion.String()

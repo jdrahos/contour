@@ -84,6 +84,13 @@ type serveContext struct {
 
 	// DEPRECATED: Configure the Gateway.Name & Gateway.Namespace in the configuration file.
 	UseExperimentalServiceAPITypes bool `yaml:"-"`
+
+	// EnableNodeWeights enable use of node annotations for endpoint weights
+	EnableNodeWeights bool
+	// NodeWeightAnnotation annotation to use to get the node weight from node resource
+	NodeWeightAnnotation string
+	// DefaultNodeWeight weight to use if the NodeWeightAnnotation is missing or empty on the node resource
+	DefaultNodeWeight uint32
 }
 
 // newServeContext returns a serveContext initialized to defaults.
@@ -108,6 +115,9 @@ func newServeContext() *serveContext {
 		PermitInsecureGRPC:             false,
 		DisableLeaderElection:          false,
 		UseExperimentalServiceAPITypes: false,
+		EnableNodeWeights:              false,
+		NodeWeightAnnotation:           "ingress.kubernetes.io/node-weight",
+		DefaultNodeWeight:              1,
 		ServerConfig: ServerConfig{
 			xdsAddr: "127.0.0.1",
 			xdsPort: 8001,
@@ -199,6 +209,7 @@ func (ctx *serveContext) tlsconfig(log logrus.FieldLogger) *tls.Config {
 		GetConfigForClient: func(*tls.ClientHelloInfo) (*tls.Config, error) {
 			return loadConfig()
 		},
+		MinVersion: tls.VersionTLS12,
 	}
 }
 

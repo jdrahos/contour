@@ -110,3 +110,12 @@ func ServicesResources() []schema.GroupVersionResource {
 func NamespacesResource() schema.GroupVersionResource {
 	return corev1.SchemeGroupVersion.WithResource("namespaces")
 }
+
+// +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
+
+// NodesResources ...
+func NodesResources() []schema.GroupVersionResource {
+	return []schema.GroupVersionResource{
+		corev1.SchemeGroupVersion.WithResource("nodes"),
+	}
+}

@@ -952,6 +952,14 @@ func TestKubernetesCacheInsert(t *testing.T) {
 			},
 			want: true,
 		},
+		"insert node": {
+			obj: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node",
+				},
+			},
+			want: true,
+		},
 	}
 
 	for name, tc := range tests {
@@ -1232,6 +1240,35 @@ func TestKubernetesCacheRemove(t *testing.T) {
 			obj:   "not an object",
 			want:  false,
 		},
+		"remove node": {
+			cache: cache(&v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node",
+				},
+			}),
+			obj: &v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node",
+				},
+			},
+			want: true,
+		},
+		//"remove tombstoned node": {
+		//	cache: cache(&v1.Node{
+		//		ObjectMeta: metav1.ObjectMeta{
+		//			Name:      "node",
+		//		},
+		//	}),
+		//	obj: &k8s_cache.DeletedFinalStateUnknown{
+		//		Key: "node",
+		//		Obj: &v1.Node{
+		//			ObjectMeta: metav1.ObjectMeta{
+		//				Name:      "node",
+		//			},
+		//		},
+		//	} ,
+		//	want: true,
+		//},
 	}
 
 	for name, tc := range tests {

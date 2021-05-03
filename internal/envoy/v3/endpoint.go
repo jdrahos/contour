@@ -19,34 +19,47 @@ import (
 	"github.com/projectcontour/contour/internal/protobuf"
 )
 
-// LBEndpoint creates a new LbEndpoint.
-func LBEndpoint(addr *envoy_core_v3.Address) *envoy_endpoint_v3.LbEndpoint {
-	return &envoy_endpoint_v3.LbEndpoint{
+const NoWeight = 0
+
+// WeightedLBEndpoint creates a new LbEndpoint with LoadBalancingWeight set to the supplied value if not 0.
+func WeightedLBEndpoint(weight uint32, addr *envoy_core_v3.Address) *envoy_endpoint_v3.LbEndpoint {
+	endpoint := &envoy_endpoint_v3.LbEndpoint{
 		HostIdentifier: &envoy_endpoint_v3.LbEndpoint_Endpoint{
 			Endpoint: &envoy_endpoint_v3.Endpoint{
 				Address: addr,
 			},
 		},
 	}
+	if weight > 0 {
+		endpoint.LoadBalancingWeight = protobuf.UInt32(weight)
+	}
+	return endpoint
+}
+
+// LBEndpoint creates a new LbEndpoint.
+func LBEndpoint(addr *envoy_core_v3.Address) *envoy_endpoint_v3.LbEndpoint {
+	return WeightedLBEndpoint(NoWeight, addr)
 }
 
 // Endpoints returns a slice of LocalityLbEndpoints.
 // The slice contains one entry, with one LbEndpoint per
 // *envoy_core_v3.Address supplied.
 func Endpoints(addrs ...*envoy_core_v3.Address) []*envoy_endpoint_v3.LocalityLbEndpoints {
+	return WeightedEndpoints(0, addrs...)
+}
+
+// WeightedEndpoints returns a slice of LocalityLbEndpoints.
+// The slice contains one entry, with one LbEndpoint per
+// *envoy_core_v3.Address supplied. All endpoints will have LoadBalancingWeight set to supplied weight unless supplied weight equals to 0.
+func WeightedEndpoints(weight uint32, addrs ...*envoy_core_v3.Address) []*envoy_endpoint_v3.LocalityLbEndpoints {
 	lbendpoints := make([]*envoy_endpoint_v3.LbEndpoint, 0, len(addrs))
 	for _, addr := range addrs {
 		lbendpoints = append(lbendpoints, LBEndpoint(addr))
 	}
 	return []*envoy_endpoint_v3.LocalityLbEndpoints{{
-		LbEndpoints: lbendpoints,
+		LbEndpoints:         lbendpoints,
+		LoadBalancingWeight: protobuf.UInt32OrNil(weight),
 	}}
-}
-
-func WeightedEndpoints(weight uint32, addrs ...*envoy_core_v3.Address) []*envoy_endpoint_v3.LocalityLbEndpoints {
-	lbendpoints := Endpoints(addrs...)
-	lbendpoints[0].LoadBalancingWeight = protobuf.UInt32(weight)
-	return lbendpoints
 }
 
 // ClusterLoadAssignment returns a *envoy_endpoint_v3.ClusterLoadAssignment with a single

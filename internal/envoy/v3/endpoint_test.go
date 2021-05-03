@@ -32,6 +32,19 @@ func TestLBEndpoint(t *testing.T) {
 	protobuf.ExpectEqual(t, want, got)
 }
 
+func TestWeightedEndpointsLBEndpoint(t *testing.T) {
+	got := WeightedLBEndpoint(10, SocketAddress("microsoft.com", 81))
+	want := &envoy_endpoint_v3.LbEndpoint{
+		HostIdentifier: &envoy_endpoint_v3.LbEndpoint_Endpoint{
+			Endpoint: &envoy_endpoint_v3.Endpoint{
+				Address: SocketAddress("microsoft.com", 81),
+			},
+		},
+		LoadBalancingWeight: protobuf.UInt32(10),
+	}
+	protobuf.ExpectEqual(t, want, got)
+}
+
 func TestEndpoints(t *testing.T) {
 	got := Endpoints(
 		SocketAddress("github.com", 443),
@@ -51,6 +64,30 @@ func TestEndpoints(t *testing.T) {
 				},
 			},
 		}},
+	}}
+	protobuf.ExpectEqual(t, want, got)
+}
+
+func TestWeightedEndpoints(t *testing.T) {
+	got := WeightedEndpoints(10,
+		SocketAddress("github.com", 443),
+		SocketAddress("microsoft.com", 80),
+	)
+	want := []*envoy_endpoint_v3.LocalityLbEndpoints{{
+		LbEndpoints: []*envoy_endpoint_v3.LbEndpoint{{
+			HostIdentifier: &envoy_endpoint_v3.LbEndpoint_Endpoint{
+				Endpoint: &envoy_endpoint_v3.Endpoint{
+					Address: SocketAddress("github.com", 443),
+				},
+			},
+		}, {
+			HostIdentifier: &envoy_endpoint_v3.LbEndpoint_Endpoint{
+				Endpoint: &envoy_endpoint_v3.Endpoint{
+					Address: SocketAddress("microsoft.com", 80),
+				},
+			},
+		}},
+		LoadBalancingWeight: protobuf.UInt32(10),
 	}}
 	protobuf.ExpectEqual(t, want, got)
 }

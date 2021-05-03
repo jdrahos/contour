@@ -196,7 +196,7 @@ func TestGRPC(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	for name, fn := range tests {
 		t.Run(name, func(t *testing.T) {
-			et = NewEndpointsTranslator(fixture.NewTestLogger(t))
+			et = NewEndpointsTranslator(fixture.NewTestLogger(t), zeroWeight)
 
 			resources := []xdscache.ResourceCache{
 				NewListenerCache(ListenerConfig{}, "", 0),

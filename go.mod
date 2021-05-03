@@ -14,6 +14,7 @@ require (
 	github.com/prometheus/common v0.15.0
 	github.com/sirupsen/logrus v1.6.0
 	github.com/stretchr/testify v1.6.1
+	golang.org/x/tools v0.1.0 // indirect
 	google.golang.org/genproto v0.0.0-20201110150050-8816d57aaa9a
 	google.golang.org/grpc v1.27.1
 	google.golang.org/protobuf v1.25.0

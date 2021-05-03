@@ -19,6 +19,8 @@ package contour
 import (
 	"time"
 
+	v1 "k8s.io/api/core/v1"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	contour_api_v1 "github.com/projectcontour/contour/apis/projectcontour/v1"
@@ -180,6 +182,7 @@ func (e *EventHandler) onUpdate(op interface{}) bool {
 			cmpopts.IgnoreFields(contour_api_v1.HTTPProxy{}, "Status"),
 			cmpopts.IgnoreFields(metav1.ObjectMeta{}, "ResourceVersion"),
 			cmpopts.IgnoreFields(metav1.ObjectMeta{}, "ManagedFields"),
+			cmpopts.IgnoreFields(v1.Node{}, "Status"),
 		) {
 			e.WithField("op", "update").Debugf("%T skipping update, only status has changed", op.newObj)
 			return false
