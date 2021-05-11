@@ -14,6 +14,7 @@
 package v3
 
 import (
+	"github.com/projectcontour/contour/pkg/config"
 	"path"
 	"testing"
 	"time"
@@ -831,6 +832,83 @@ func TestListenerVisit(t *testing.T) {
 						MetricsPrefix(ENVOY_HTTPS_LISTENER).
 						RouteConfigName(path.Join("https", "whatever.example.com")).
 						AccessLoggers(envoy_v3.FileAccessLogEnvoy("/tmp/https_access.log")).
+						Get()),
+				}},
+				SocketOptions: envoy_v3.TCPKeepaliveSocketOptions(),
+			}),
+		},
+		"access log turned off": {
+			ListenerConfig: ListenerConfig{
+				HTTPAccessLog:  "/tmp/http_access.log",
+				HTTPSAccessLog: "/tmp/https_access.log",
+				AccessLogType:  config.OffAccessLog,
+			},
+			objs: []interface{}{
+				&v1beta1.Ingress{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "simple",
+						Namespace: "default",
+					},
+					Spec: v1beta1.IngressSpec{
+						TLS: []v1beta1.IngressTLS{{
+							Hosts:      []string{"whatever.example.com"},
+							SecretName: "secret",
+						}},
+						Rules: []v1beta1.IngressRule{{
+							Host: "whatever.example.com",
+							IngressRuleValue: v1beta1.IngressRuleValue{
+								HTTP: &v1beta1.HTTPIngressRuleValue{
+									Paths: []v1beta1.HTTPIngressPath{{
+										Backend: *backend("kuard", 8080),
+									}},
+								},
+							},
+						}},
+					},
+				},
+				&v1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "secret",
+						Namespace: "default",
+					},
+					Type: "kubernetes.io/tls",
+					Data: secretdata(CERTIFICATE, RSA_PRIVATE_KEY),
+				},
+				&v1.Service{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "kuard",
+						Namespace: "default",
+					},
+					Spec: v1.ServiceSpec{
+						Ports: []v1.ServicePort{{
+							Name:     "http",
+							Protocol: "TCP",
+							Port:     8080,
+						}},
+					},
+				},
+			},
+			want: listenermap(&envoy_listener_v3.Listener{
+				Name:          ENVOY_HTTP_LISTENER,
+				Address:       envoy_v3.SocketAddress(DEFAULT_HTTP_LISTENER_ADDRESS, DEFAULT_HTTP_LISTENER_PORT),
+				FilterChains:  envoy_v3.FilterChains(envoy_v3.HTTPConnectionManager(ENVOY_HTTP_LISTENER, nil, 0, 0)),
+				SocketOptions: envoy_v3.TCPKeepaliveSocketOptions(),
+			}, &envoy_listener_v3.Listener{
+				Name:    ENVOY_HTTPS_LISTENER,
+				Address: envoy_v3.SocketAddress(DEFAULT_HTTPS_LISTENER_ADDRESS, DEFAULT_HTTPS_LISTENER_PORT),
+				ListenerFilters: envoy_v3.ListenerFilters(
+					envoy_v3.TLSInspector(),
+				),
+				FilterChains: []*envoy_listener_v3.FilterChain{{
+					FilterChainMatch: &envoy_listener_v3.FilterChainMatch{
+						ServerNames: []string{"whatever.example.com"},
+					},
+					TransportSocket: transportSocket("secret", envoy_tls_v3.TlsParameters_TLSv1_2, nil, "h2", "http/1.1"),
+					Filters: envoy_v3.Filters(envoy_v3.HTTPConnectionManagerBuilder().
+						AddFilter(envoy_v3.FilterMisdirectedRequests("whatever.example.com")).
+						DefaultFilters().
+						MetricsPrefix(ENVOY_HTTPS_LISTENER).
+						RouteConfigName(path.Join("https", "whatever.example.com")).
 						Get()),
 				}},
 				SocketOptions: envoy_v3.TCPKeepaliveSocketOptions(),

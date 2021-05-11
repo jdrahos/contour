@@ -246,6 +246,8 @@ func (lvc *ListenerConfig) newInsecureAccessLog() []*envoy_accesslog_v3.AccessLo
 	switch lvc.accesslogType() {
 	case string(config.JSONAccessLog):
 		return envoy_v3.FileAccessLogJSON(lvc.httpAccessLog(), lvc.accesslogFields())
+	case string(config.OffAccessLog):
+		return []*envoy_accesslog_v3.AccessLog{}
 	default:
 		return envoy_v3.FileAccessLogEnvoy(lvc.httpAccessLog())
 	}
@@ -255,6 +257,8 @@ func (lvc *ListenerConfig) newSecureAccessLog() []*envoy_accesslog_v3.AccessLog 
 	switch lvc.accesslogType() {
 	case "json":
 		return envoy_v3.FileAccessLogJSON(lvc.httpsAccessLog(), lvc.accesslogFields())
+	case string(config.OffAccessLog):
+		return []*envoy_accesslog_v3.AccessLog{}
 	default:
 		return envoy_v3.FileAccessLogEnvoy(lvc.httpsAccessLog())
 	}

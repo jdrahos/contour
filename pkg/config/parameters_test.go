@@ -181,6 +181,7 @@ func TestValidateAccessLogType(t *testing.T) {
 
 	assert.NoError(t, EnvoyAccessLog.Validate())
 	assert.NoError(t, JSONAccessLog.Validate())
+	assert.NoError(t, OffAccessLog.Validate())
 }
 
 func TestValidateAccessLogFields(t *testing.T) {

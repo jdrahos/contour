@@ -108,7 +108,7 @@ type AccessLogType string
 
 func (a AccessLogType) Validate() error {
 	switch a {
-	case EnvoyAccessLog, JSONAccessLog:
+	case EnvoyAccessLog, JSONAccessLog, OffAccessLog:
 		return nil
 	default:
 		return fmt.Errorf("invalid access log format %q", a)
@@ -117,6 +117,7 @@ func (a AccessLogType) Validate() error {
 
 const EnvoyAccessLog AccessLogType = "envoy"
 const JSONAccessLog AccessLogType = "json"
+const OffAccessLog AccessLogType = "off"
 
 type AccessLogFields []string
 
